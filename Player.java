@@ -1,24 +1,28 @@
-public class Player {
+public class Player implements Runnable {
 
     private final String text;
+
     private int turns = Game.MAX_TURNS;
+
     private Player nextPlayer;
+
+    private boolean mustPlay = false;
 
     public Player(String text) {
         this.text = text;
     }
 
-    public static Player create(String text, Player nextPlayer) {
-        Player player = new Player(text);
-        player.setNextPlayer(nextPlayer);
-        return player;
-    }
+    @Override
+    public void run() {
+        while(!gameFinished()) {
+            while (!mustPlay);
 
-    public void play() {
-        if (!gameFinished()) {
             System.out.println(text);
             turns--;
-            nextPlayer.play();
+
+            this.mustPlay = false;
+            nextPlayer.mustPlay = true;
+
         }
     }
 
@@ -30,4 +34,7 @@ public class Player {
         this.nextPlayer = nextPlayer;
     }
 
+    public void setMustPlay(boolean mustPlay) {
+        this.mustPlay = mustPlay;
+    }
 }

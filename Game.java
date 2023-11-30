@@ -1,54 +1,32 @@
-import java.lang.Thread;
-
 public class Game {
-  
-  public static final int MAX_TURNS = 10;
-  
-  public static void main(String[] args) {
-    Thread player1 = new Thread(new PlayerRunnable("ping"));
-    Thread player2 = new Thread(new PlayerRunnable("pong", player1));
-    player1.start();
-    player2.start();
-  }
-}
 
-class PlayerRunnable implements Runnable {
-  private String message;
-  private Thread nextPlayer;
-  
-  public PlayerRunnable(String message) {
-    this.message = message;
-  }
-  
-  public PlayerRunnable(String message, Thread nextPlayer) {
-    this.message = message;
-    this.nextPlayer = nextPlayer;
-  }
-  
-  public void setNextPlayer(Thread nextPlayer) {
-    this.nextPlayer = nextPlayer;
-  }
-  
-  public void run() {
-    for (int i = 0; i < Game.MAX_TURNS; i++) {
-      System.out.println(message);
-      try {
-        Thread.sleep(1000);
-      } catch (InterruptedException e) {
-        e.printStackTrace();
-      }
-      if (nextPlayer != null) {
-        synchronized (nextPlayer) {
-          nextPlayer.notify();
-        }
-      }
-      synchronized (this) {
+    public static final int MAX_TURNS = 10;
+
+    public static void main(String[] args) {
+
+        Player player1 = new Player("ping");
+        Player player2 = new Player("pong");
+
+        player1.setNextPlayer(player2);
+        player2.setNextPlayer(player1);
+
+        System.out.println("Game starting...!");
+
+        player1.setMustPlay(true);
+
+        Thread thread2 = new Thread(player2);
+        thread2.start();
+        Thread thread1 = new Thread(player1);
+        thread1.start();
+
         try {
-          wait();
+            thread1.join();
+            thread2.join();
         } catch (InterruptedException e) {
-          e.printStackTrace();
+            e.printStackTrace();
         }
-      }
+
+        System.out.println("Game finished!");
     }
-  }
+
 }
