@@ -4,11 +4,7 @@ public class Game {
 
     public static void main(String[] args) {
 
-        Player player1 = new Player("ping");
-        Player player2 = new Player("pong");
-
-        player1.setNextPlayer(player2);
-        player2.setNextPlayer(player1);
+        Player player1 = Player.create("ping", Player.create("pong", null));
 
         System.out.println("Game starting...!");
 

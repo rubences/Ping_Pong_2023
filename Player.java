@@ -6,8 +6,10 @@ public class Player {
 
     private Player nextPlayer;
 
-    public Player(String text) {
-        this.text = text;
+   public static Player create(String text, Player nextPlayer) {
+        Player player = new Player(text);
+        player.setNextPlayer(nextPlayer);
+        return player;
     }
 
     public void play() {
