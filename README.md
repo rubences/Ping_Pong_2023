@@ -279,3 +279,87 @@ public class Player implements Runnable {
     //....
 }
 Y ahora sí, nuestra aplicación funciona de forma determinista en cada ejecución. Uno de los mayores problemas de la visibilidad en aplicaciones concurrentes es que falla aleatoriamente, por lo que si no somos conscientes de las directrices a seguir, depurar estos problemas puede ser extremadamente complicado.
+
+## Versión 2: juego infinito
+En lugar de jugar un número determinado de turnos vamos a poner a los dos actores a jugar para siempre. O mejor dicho, hasta que el hilo principal quiera. Para ello, debemos utilizar las funcionalidades que ofrece Java para interrumpir un thread. Veamos cómo quedaría la clase Game:
+
+public class Game {
+
+    public static void main(String[] args) {
+
+        Player player1 = new Player("ping");
+        Player player2 = new Player("pong");
+
+        player1.setNextPlayer(player2);
+        player2.setNextPlayer(player1);
+
+        System.out.println("Game starting...!");
+
+        player1.setMustPlay(true);
+
+        Thread thread2 = new Thread(player2);
+        thread2.start();
+        Thread thread1 = new Thread(player1);
+        thread1.start();
+
+        //Let the players play!
+        try {
+            Thread.sleep(2);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        //Tell the players to stop
+        thread1.interrupt();
+        thread2.interrupt();
+
+        //Wait until players finish
+        try {
+            thread1.join();
+            thread2.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("Game finished!");
+    }
+
+}
+Vemos que, una vez iniciados los jugadores, la clase principal se duerme durante un tiempo (2ms), y a nada que regresa a su estado “running” les pide a los dos threads que finalicen.
+
+Repito, les pide. Lo único que ocurre al invocar el método interrupt sobre un thread es que se pone a true un flag “interrupted” en ese thread. Es responsabilidad del propio thread actuar si lo desea, realizar labores de limpieza y finalizar. Pero bien puede decidir no hacer nada de nada y continuar con su ejecución (aunque eso no sería muy correcto, claro). La forma de consultar ese flag es mediante el método Thread.interrupted(), por lo que nuestra clase Player quedarían así:
+
+public class Player implements Runnable {
+
+    private final String text;
+
+    private Player nextPlayer;
+
+    private volatile boolean mustPlay = false;
+
+    public Player(String text) {
+        this.text = text;
+    }
+
+    @Override
+    public void run() {
+        while(!Thread.interrupted()) {
+            while (!mustPlay);
+
+            System.out.println(text);
+
+            this.mustPlay = false;
+            nextPlayer.mustPlay = true;
+
+        }
+    }
+
+    public void setNextPlayer(Player nextPlayer) {
+        this.nextPlayer = nextPlayer;
+    }
+
+    public void setMustPlay(boolean mustPlay) {
+        this.mustPlay = mustPlay;
+    }
+}
+En lugar de chequear en cada vuelta del bucle si hemos agotado turnos miramos el estado del flag “interrupted”, y concluimos en caso de que sea true. Tan sencillo como eso.

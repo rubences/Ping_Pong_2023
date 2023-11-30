@@ -1,64 +1,43 @@
-import javax.swing.*;
-import java.awt.*;
+public class Game {
 
-public class Game extends JFrame {
-  private JTextArea textArea;
-  private Player player1;
-  private Player player2;
-  private Thread thread1;
-  private Thread thread2;
+    public static void main(String[] args) {
 
-  public Game() {
-    setLayout(new BorderLayout());
-    setTitle("Ping Pong Game");
-    setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-    setSize(500, 500);
+        Player player1 = new Player("ping");
+        Player player2 = new Player("pong");
 
-    textArea = new JTextArea();
-    add(new JScrollPane(textArea), BorderLayout.CENTER);
+        player1.setNextPlayer(player2);
+        player2.setNextPlayer(player1);
 
-    player1 = new Player("ping", 0, textArea);
-    player2 = new Player("pong", 0, textArea);
+        System.out.println("Game starting...!");
 
-    player1.setNextPlayer(player2);
-    player2.setNextPlayer(player1);
+        player1.setMustPlay(true);
 
-    JButton startButton = new JButton("Start Game");
-    startButton.addActionListener(e -> startGame());
+        Thread thread2 = new Thread(player2);
+        thread2.start();
+        Thread thread1 = new Thread(player1);
+        thread1.start();
 
-    JButton stopButton = new JButton("Stop Game");
-    stopButton.addActionListener(e -> stopGame());
+        //Let the players play!
+        try {
+            Thread.sleep(2);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
-    JPanel panel = new JPanel();
-    panel.add(startButton);
-    panel.add(stopButton);
-    add(panel, BorderLayout.SOUTH);
-  }
+        //Tell the players to stop
+        thread1.interrupt();
+        thread2.interrupt();
 
-  private void startGame() {
-    textArea.append("Game starting...!\n");
+        //Wait until players finish
+        try {
+            thread1.join();
+            thread2.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
-    player1.setMustPlay(true);
+        System.out.println("Game finished!");
+    }
 
-    thread2 = new Thread(() -> player2.run());
-    thread2.start();
-    thread1 = new Thread(() -> player1.run());
-    thread1.start();
-  }
-
-
-
-  private void stopGame() {
-    thread1.interrupt();
-    thread2.interrupt();
-    textArea.append("Game finished!\n");
-  }
-
-  public static void main(String[] args) {
-    SwingUtilities.invokeLater(() -> {
-      new Game().setVisible(true);
-    });
-  }
 }
-
 // Path: Player.java
