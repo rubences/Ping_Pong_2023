@@ -1,12 +1,14 @@
 public class Player {
 
     private final String text;
-
     private int turns = Game.MAX_TURNS;
-
     private Player nextPlayer;
 
-   public static Player create(String text, Player nextPlayer) {
+    public Player(String text) {
+        this.text = text;
+    }
+
+    public static Player create(String text, Player nextPlayer) {
         Player player = new Player(text);
         player.setNextPlayer(nextPlayer);
         return player;
