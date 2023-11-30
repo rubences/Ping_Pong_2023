@@ -14,18 +14,18 @@ public class Player implements Runnable {
     public void run() {
         while(!Thread.interrupted()) {
             while (!mustPlay);
-
+    
             try {
                 Thread.sleep(1);
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                Thread.currentThread().interrupt();
             }
-
+    
             System.out.println(text);
-
+    
             this.mustPlay = false;
             nextPlayer.mustPlay = true;
-
+    
         }
     }
 
