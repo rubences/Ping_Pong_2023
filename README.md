@@ -363,3 +363,58 @@ public class Player implements Runnable {
     }
 }
 En lugar de chequear en cada vuelta del bucle si hemos agotado turnos miramos el estado del flag “interrupted”, y concluimos en caso de que sea true. Tan sencillo como eso.
+
+# Versión 2b: Más sobre interrupt
+Antes de finalizar este primer post de la serie, vamos a mirar un poco más en profundidad las implicaciones de interrumpir un thread.
+
+En varias ocasiones hemos visto como algunos de los métodos de la clase Thread (join, sleep…) lanzan la excepción InterruptedException. Esto ocurre cuando un thread es interrumpido encontrándose en situación de bloqueo debido a la invocación de alguno de estos métodos. En tal caso, lo que ocurre es que el método limpia el flag “interrupted” en el thread en cuestión, y lanza la excepción InterruptedException. Sin ser yo muy fan de las checked exceptions, este es uno de los casos en los que encuentro más justificado su uso.
+
+Modifiquemos ligeramente la clase Player para que, una vez le llegue el turno a un jugador se duerma durante 1ms antes de imprimir el texto:
+
+public class Player implements Runnable {
+    //...
+    @Override
+    public void run() {
+        while(!Thread.interrupted()) {
+            while (!mustPlay);
+
+            try {
+                Thread.sleep(1);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            System.out.println(text);
+
+            this.mustPlay = false;
+            nextPlayer.mustPlay = true;
+
+        }
+    }
+    //...
+}
+Utilizando la misma versión de la clase Game, es altamente probable que el juego se ejecute indefenidamente. ¿Por qué? Porque si la interrupción le llega al thread mientras está durmiendo, el método sleep se traga el estado “interrupted” antes de lanzar la excepción, y como nosotros sólo nos hemos limitado a imprimir el error, el bucle no detecta este estado interrupted y continúa para siempre.
+
+La solución a esto es restablecer el Thread a interrupted:
+
+@Override
+public void run() {
+    while(!Thread.interrupted()) {
+        while (!mustPlay);
+
+        try {
+            Thread.sleep(1);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        System.out.println(text);
+
+        this.mustPlay = false;
+        nextPlayer.mustPlay = true;
+
+    }
+}
+En general, hemos de ser muy cuidadosos a la hora de manejar InterruptedException. Otra estrategia recomendada, que implicaría modificar la lógica de nuestro método run, es volver a lanzar la excepción para que sea manejada en algún otro lugar. En ningún caso nunca debemos tragarnos la excepción sin más.
+
+Quedan muchas mejoras por llevar a cabo, la aplicación está lejos de ser óptima (empezando por esa horrenda espera activa). En el siguiente post añadiremos mejoras para optimizar el uso de la CPU mediante el uso de locks y condiciones.

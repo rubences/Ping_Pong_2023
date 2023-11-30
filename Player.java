@@ -15,6 +15,12 @@ public class Player implements Runnable {
         while(!Thread.interrupted()) {
             while (!mustPlay);
 
+            try {
+                Thread.sleep(1);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
             System.out.println(text);
 
             this.mustPlay = false;
