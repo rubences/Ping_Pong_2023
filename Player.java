@@ -6,7 +6,7 @@ public class Player implements Runnable {
 
     private Player nextPlayer;
 
-    private boolean mustPlay = false;
+    private volatile boolean mustPlay = false;
 
     public Player(String text) {
         this.text = text;
@@ -37,4 +37,6 @@ public class Player implements Runnable {
     public void setMustPlay(boolean mustPlay) {
         this.mustPlay = mustPlay;
     }
+
+  
 }
