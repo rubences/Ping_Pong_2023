@@ -1,15 +1,16 @@
+import javax.swing.*;
+
 public class Player implements Runnable {
-
-    private final String text;
-
-    private int turns = Game.MAX_TURNS;
-
+    private String text;
+    private int turns;
+    private boolean mustPlay;
     private Player nextPlayer;
+    private JTextArea textArea;
 
-    private volatile boolean mustPlay = false;
-
-    public Player(String text) {
+    public Player(String text, int turns, JTextArea textArea) {
         this.text = text;
+        this.turns = turns;
+        this.textArea = textArea;
     }
 
     @Override
@@ -17,15 +18,14 @@ public class Player implements Runnable {
         while(!gameFinished()) {
             while (!mustPlay);
 
-            System.out.println(text);
+            textArea.append(text + "\n");
             turns--;
 
             this.mustPlay = false;
             nextPlayer.mustPlay = true;
-
         }
     }
-
+    // Rest of the code...
     private boolean gameFinished() {
         return turns == 0;
     }
