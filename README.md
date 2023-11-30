@@ -94,6 +94,44 @@ public class Game {
     }
 }
 
+## Versión 0.2: con dos hilos
+Vamos a hacer que nuestro juego sea concurrente. Para ello vamos a crear un thread para cada jugador, y vamos a arrancarlos de forma separada. Para ello vamos a crear una clase PlayerThread que extienda de Thread:
+
+public class PlayerThread extends Thread {
+
+    private final Player player;
+
+    public PlayerThread(Player player) {
+        this.player = player;
+    }
+
+    @Override
+    public void run() {
+        player.play();
+    }
+}
+
+Y ahora nuestro código de Game quedaría así:
+
+public class Game {
+
+    public static final int MAX_TURNS = 10;
+
+    public static void main(String[] args) {
+
+        Player player1 = Player.create("ping", Player.create("pong", null));
+
+        System.out.println("Game starting...!");
+
+        Thread thread1 = new PlayerThread(player1);
+        thread1.start();
+
+        System.out.println("Game finished!");
+    }
+}
+
+Si ejecutamos la aplicación veremos que no funciona como esperábamos. El mensaje “Game finished!” se imprime antes que los mensajes de los jugadores. ¿Qué ha pasado? Pues que el thread principal (el que ejecuta el método main) no espera a que los otros threads finalicen su ejecución, por lo que la salida de los mismos no es recogida por el IDE. Para solucionarlo podemos utilizar el método join() de la clase Thread:
+
 
 ## Versión 1: jugadores como threads
 Vamos a llevar nuestra aplicación un poco más allá para que funcione en modo concurrente. Cómo la intención es hacerlo en incrementos pequeños nos iremos encontrando que nuestros primeros acercamientos no funcionan como es debido.
