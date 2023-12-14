@@ -1,3 +1,4 @@
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 
@@ -27,7 +28,7 @@ public class Player implements Runnable {
 
             try {
                 while (!play)
-                    myTurn.awaitUninterruptibly();
+                    myTurn.await(1, TimeUnit.SECONDS);
 
                 System.out.println(text);
 
@@ -35,6 +36,8 @@ public class Player implements Runnable {
                 nextPlayer.play = true;
 
                 nextTurn.signal();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             } finally {
                 lock.unlock();
             }
