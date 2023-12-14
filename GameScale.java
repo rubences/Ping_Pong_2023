@@ -13,7 +13,7 @@ public class GameScale {
         Player[] players = new Player[length];
 
         for (int i=0; i < length; i++) {
-            Player player = new Player("player"+i, lock);
+            Player player = new Player("player"+i, lock, null, null);
             players[i] = player;
         }
 

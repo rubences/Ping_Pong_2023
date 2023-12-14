@@ -1399,7 +1399,10 @@ En efecto, la barrera de entrada tiene un contador de 1, porque se abrirá tan p
 
 De esta forma el timing de la aplicación es el deseado, aunque para ello hayamos tenido que complicar un poco el código. El tema es que la concurrencia de por sí es compleja, por lo que es difícil encapsular perfectamente todos los mecanismos utilizados.
 
-Antes de terminar el post, mencionar que la barrera de salida ha sido añadida a esta versión a efectos didácticos. El mejor mecanismo para esperar la finalización de un grupo de threads en un pool es la espera mediante awaitTermination, introduciendo un timeout razonable, de forma que si alcanzamos el timeout sea porque algún fallo está ocurriendo en las tareas de las que esperamos su terminación. En mi repositorio de GitHub he añadido una versión 7 donde se utiliza la barrera de entrada y awaitTermination como barrera de salida, pudiéndose considerar ésta la versión óptima de la aplicación.
+Antes de terminar el post, mencionar que la barrera de salida ha sido añadida a esta versión a efectos didácticos. El mejor mecanismo para esperar la finalización de un grupo de threads en un pool es la espera mediante awaitTermination, introduciendo un timeout razonable, de forma que si alcanzamos el timeout sea porque algún fallo está ocurriendo en las tareas de las que esperamos su terminación. 
+
+
+versión 7 donde se utiliza la barrera de entrada y awaitTermination como barrera de salida, pudiéndose considerar ésta la versión óptima de la aplicación.
 
 
 
