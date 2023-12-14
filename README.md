@@ -576,3 +576,104 @@ public class Game {
     }
 
 }
+
+## Versión 3.b: Locks explícitos
+
+La versión anterior de nuestro juego de Ping Pong funciona correctamente, pero tiene un problema. El lock utilizado es el mismo para todos los jugadores, por lo que si en un futuro quisiéramos añadir más jugadores al juego, o incluso crear varios juegos concurrentes, tendríamos que crear un lock por cada jugador o juego, y pasarle el lock correspondiente a cada jugador. Esto es un poco engorroso, y además no es muy elegante.
+
+Para solucionar esto, Java ofrece la interfaz Lock, que nos permite crear locks explícitos, y que además nos ofrece funcionalidades adicionales. Veamos cómo quedaría nuestro código:
+
+public class Player implements Runnable {
+
+    private final String text;
+
+    private final Lock lock;
+
+    private Player nextPlayer;
+
+    private volatile boolean play = false;
+
+    public Player(String text,
+                  Lock lock) {
+        this.text = text;
+        this.lock = lock;
+    }
+
+    @Override
+    public void run() {
+        while(!Thread.interrupted()) {
+            lock.lock();
+            try {
+                while (!play)
+                    lock.await();
+
+                System.out.println(text);
+
+                this.play = false;
+                nextPlayer.play = true;
+
+                lock.signalAll();
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+
+    public void setNextPlayer(Player nextPlayer) {
+        this.nextPlayer = nextPlayer;
+    }
+
+    public void setPlay(boolean play) {
+        this.play = play;
+    }
+}
+
+Y la clase Game:
+
+public class Game {
+
+    public static void main(String[] args) {
+
+        Lock lock = new ReentrantLock();
+
+        Player player1 = new Player("ping", lock);
+        Player player2 = new Player("pong", lock);
+
+        player1.setNextPlayer(player2);
+        player2.setNextPlayer(player1);
+
+        System.out.println("Game starting...!");
+
+        player1.setPlay(true);
+
+        Thread thread2 = new Thread(player2);
+        thread2.start();
+        Thread thread1 = new Thread(player1);
+        thread1.start();
+
+        //Let the players play!
+        try {
+            Thread.sleep(2);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        //Tell the players to stop
+        thread1.interrupt();
+        thread2.interrupt();
+
+        //Wait until players finish
+        try {
+            thread1.join();
+            thread2.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("Game finished!");
+    }
+
+}

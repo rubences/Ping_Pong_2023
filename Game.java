@@ -1,8 +1,12 @@
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+
 public class Game {
 
     public static void main(String[] args) {
 
-        Object lock = new Object();
+        Lock lock = new ReentrantLock();
 
         Player player1 = new Player("ping", lock);
         Player player2 = new Player("pong", lock);
