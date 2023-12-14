@@ -677,3 +677,133 @@ public class Game {
     }
 
 }
+
+## Versión 4. Locks explícitos y condiciones
+Java expone en su API concurrency una interfaz, Lock, que permite implementar los mismos mecanismos de exclusión vistos mediante el uso de intrinsic locks, pero con un acercamiento diferente.
+
+La implementación principal de Lock es ReentrantLock. El nombre se debe a que los locks en Java son reentrantes, por lo que una vez adquirido por un thread, si el mismo thread realiza un nuevo intento de adquirirlo este no fracasa. Lo que haremos será implementar los mismos ejemplos vistos más arriba con esta API.
+
+Secciones críticas
+Lock lock = new ReentrantLock();
+//...
+lock.lock();
+try {
+    //critical section...
+} finally {
+    lock.unlock();
+}
+Fácil, tan sólo tener en cuenta que debemos invocar el método unlock en la claúsula finally para garantizar que el lock es liberado incluso en caso de error.
+
+Personalmente no diría que este mecanismo es mejor que el ofrecido por synchronized, siendo este último más compacto. Las grandes ventajas del uso de Lock vienen de una serie de métodos que nos dan la posibilidad de desarrollar mecanismos de locking más complejos como:
+
+### tryLock(): intentamos adquirir el lock, pero el thread no se bloquea ni no lo consigue
+### fairness: podemos crear un lock como “fair”. 
+Por defecto los locks en Java no lo son, por lo que un thread en espera puede ser el elegido para adquirir el lock aunque sea el último que ha llegado. Con un fair lock se implementará un locking FIFO
+Os recomiendo echar un vistazo completo a la API para más detalles.
+
+### Mecanismos de espera
+La implementación de estos mecanismos se realiza mediante el uso de la clase Condition. La creación de una instancia de Condition debe hacerse siempre a partir de un Lock:
+
+### Condition condition = lock.newCondition();
+La clase Condition expone dos métodos, await() y signal() que vienen a ser el equivalente a wait() y notify() en los intrinsic locks. Además podemos utilizar otros métodos como:
+
+#### await(long time, TimeUnit unit): espera a una condición no más del tiempo proporcionado por parámetro
+#### awaitUninterruptibly(): versión de await() no interrumpible. 
+Es decir, si el thread que esté suspendido a la espera de una condición es interrumpido, este método no lanzará la conocida InterruptedException, por lo que solo pasará a estar activa si se invoca signal()/signalAll() sobre la condición (spurious wakeups aparte).
+En general, para mecanismos de espera diría que el uso de Condition ofrece una seria de funcionalidades muy interesantes, además de permitir la creación de varias condiciones asociadas al mismo lock, cosa que no es posible (o si lo es su implementación es muy complicada) con intrinsic locks.
+
+Veamos cómo queda nuestra aplicación mediante el uso de Lock y Condition:
+
+public class Player implements Runnable {
+
+    private final String text;
+
+    private final Lock lock;
+    private final Condition myTurn;
+    private Condition nextTurn;
+
+    private Player nextPlayer;
+
+    private volatile boolean play = false;
+
+    public Player(String text,
+                  Lock lock) {
+        this.text = text;
+        this.lock = lock;
+        this.myTurn = lock.newCondition();
+    }
+
+    @Override
+    public void run() {
+        while(!Thread.interrupted()) {
+            lock.lock();
+
+            try {
+                while (!play)
+                    myTurn.awaitUninterruptibly();
+
+                System.out.println(text);
+
+                this.play = false;
+                nextPlayer.play = true;
+
+                nextTurn.signal();
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+
+    public void setNextPlayer(Player nextPlayer) {
+        this.nextPlayer = nextPlayer;
+        this.nextTurn = nextPlayer.myTurn;
+    }
+
+    public void setPlay(boolean play) {
+        this.play = play;
+    }
+}
+Vemos como el uso de Condition hace más clara la lectura del código. Además, hemos utilizado el método awaitUninterruptibly, de forma que se garantiza fácilmente la consecución de la última jugada pendiente por parte de cada jugador cuando el hilo principal interrumpe los threads:
+
+public class Game {
+
+    public static void main(String[] args) {
+        Lock lock = new ReentrantLock();
+
+        Player player1 = new Player("ping", lock);
+        Player player2 = new Player("pong", lock);
+
+        player1.setNextPlayer(player2);
+        player2.setNextPlayer(player1);
+
+        System.out.println("Game starting...!");
+
+        player1.setPlay(true);
+
+        Thread thread2 = new Thread(player2);
+        thread2.start();
+        Thread thread1 = new Thread(player1);
+        thread1.start();
+
+        //Let the players play!
+        try {
+            Thread.sleep(2);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        //Tell the players to stop
+        thread1.interrupt();
+        thread2.interrupt();
+
+        //Wait until players finish
+        try {
+            thread1.join();
+            thread2.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("Game finished!");
+    }
+}

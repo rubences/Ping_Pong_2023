@@ -1,51 +1,52 @@
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-
 
 public class Player implements Runnable {
 
-        private final String text;
+    private final String text;
 
-        private final ReentrantLock lock;
+    private final Lock lock;
+    private final Condition myTurn;
+    private Condition nextTurn;
 
-        private Player nextPlayer;
+    private Player nextPlayer;
 
-        private volatile boolean play = false;
+    private volatile boolean play = false;
 
-        public Player(String text,
-                      Lock lock) {
-            this.text = text;
-            this.lock = (ReentrantLock) lock;
-        }
+    public Player(String text,
+                  Lock lock) {
+        this.text = text;
+        this.lock = lock;
+        this.myTurn = lock.newCondition();
+    }
 
-        @Override
-        public void run() {
-            while(!Thread.interrupted()) {
-                lock.lock();
-                try {
-                    while (!play)
-                        lock.newCondition().await();
+    @Override
+    public void run() {
+        while(!Thread.interrupted()) {
+            lock.lock();
 
-                    System.out.println(text);
+            try {
+                while (!play)
+                    myTurn.awaitUninterruptibly();
 
-                    this.play = false;
-                    nextPlayer.play = true;
+                System.out.println(text);
 
-                    lock.unlock();
+                this.play = false;
+                nextPlayer.play = true;
 
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                } finally {
-                    lock.unlock();
-                            }
+                nextTurn.signal();
+            } finally {
+                lock.unlock();
+            }
         }
     }
 
-        public void setNextPlayer(Player nextPlayer) {
-            this.nextPlayer = nextPlayer;
-     }
+    public void setNextPlayer(Player nextPlayer) {
+        this.nextPlayer = nextPlayer;
+        this.nextTurn = nextPlayer.myTurn;
+    }
 
-        public void setPlay(boolean play) {
-            this.play = play;
-     }
+    public void setPlay(boolean play) {
+        this.play = play;
+    }
 }

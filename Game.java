@@ -5,7 +5,6 @@ import java.util.concurrent.locks.ReentrantLock;
 public class Game {
 
     public static void main(String[] args) {
-
         Lock lock = new ReentrantLock();
 
         Player player1 = new Player("ping", lock);
@@ -44,6 +43,5 @@ public class Game {
 
         System.out.println("Game finished!");
     }
-
 }
 // Path: Player.java
