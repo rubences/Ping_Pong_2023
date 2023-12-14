@@ -29,15 +29,7 @@ public class Game {
 
         executor.shutdownNow();
 
-        try {
-            executor.awaitTermination(5, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            System.out.println("Main thread interrupted while waiting for players to finish");
-        }
-
         System.out.println("Game finished!");
-
-        
     }
 
     public static void sleep(long ms) {

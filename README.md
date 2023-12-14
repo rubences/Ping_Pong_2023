@@ -967,6 +967,107 @@ public class Game {
     }
 }
 
+# Ping Pong, Versión 6: Pool de threads y ScheduledExecutorService
+
+Vamos a modificar ligeramente nuestro juego para que los jugadores tengan un tiempo máximo para jugar. Si no lo hacen, el hilo principal los interrumpirá y finalizará el juego. Para ello, vamos a utilizar el método await de la clase Condition que nos permite esperar un tiempo máximo:
+
+public class Player implements Runnable {
+
+    private final String text;
+
+    private final Lock lock;
+    private final Condition myTurn;
+    private Condition nextTurn;
+
+    private Player nextPlayer;
+
+    private volatile boolean play = false;
+
+    public Player(String text,
+                  Lock lock) {
+        this.text = text;
+        this.lock = lock;
+        this.myTurn = lock.newCondition();
+    }
+
+    @Override
+    public void run() {
+        while(!Thread.interrupted()) {
+            lock.lock();
+
+            try {
+                while (!play)
+                    myTurn.await(1, TimeUnit.SECONDS);
+
+                System.out.println(text);
+
+                this.play = false;
+                nextPlayer.play = true;
+
+                nextTurn.signal();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+
+    public void setNextPlayer(Player nextPlayer) {
+        this.nextPlayer = nextPlayer;
+        this.nextTurn = nextPlayer.myTurn;
+    }
+
+    public void setPlay(boolean play) {
+        this.play = play;
+    }
+}
+
+la clase Game:
+
+public class Game {
+
+    public static void main(String[] args) {
+        Lock lock = new ReentrantLock();
+
+        Player player1 = new Player("ping", lock);
+        Player player2 = new Player("pong", lock);
+
+        player1.setNextPlayer(player2);
+        player2.setNextPlayer(player1);
+
+        System.out.println("Game starting...!");
+
+        player1.setPlay(true);
+
+        Thread thread2 = new Thread(player2);
+        thread2.start();
+        Thread thread1 = new Thread(player1);
+        thread1.start();
+
+        //Let the players play!
+        try {
+            Thread.sleep(2);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        //Tell the players to stop
+        thread1.interrupt();
+        thread2.interrupt();
+
+        //Wait until players finish
+        try {
+            thread1.join();
+            thread2.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("Game finished!");
+    }
+}
+
 ## 5. Escalando a N jugadores
 Vamos a ver de qué forma tan sencilla podemos escalar el juego a varios jugadores, de forma que se vayan pasando la “pelota” entre ellos por orden. Es decir, la salida del programa sería algo como:
 
@@ -1137,9 +1238,33 @@ System.out.println("Game finished!");
 //...
 Ahora sí conseguimos la salida deseada, y el juego se comporta como queremos con una clase principal mucho más limpia y legible. ¿Hemos terminado? Aún no :)
 
-# Ping Pong, Versión 6: Pool de threads y ScheduledExecutorService
+# Barreras
+Las barreras de entrada / salida, son mecanismos de sincronización que facilitan la ejecución simultánea de un grupo de threads (barrera de entrada), o la espera hasta finalizar la ejecución de (otra vez) otro pool de threads.
 
-Vamos a modificar ligeramente nuestro juego para que los jugadores tengan un tiempo máximo para jugar. Si no lo hacen, el hilo principal los interrumpirá y finalizará el juego. Para ello, vamos a utilizar el método await de la clase Condition que nos permite esperar un tiempo máximo:
+La idea de la barrera de salida (exit barrier) la hemos visto en el punto anterior con awaitTermination. No obstante, aunque este método nos posibilita crear una barrera de salida también nos obliga a establecer un timeout (que aunque puede ser de horas no deja de ser un timeout). Nosotros querríamos crear una barrera de salida sin timeout alguno.
+
+Para entender lo que es una barrera de entrada vamos a añadir una instrucción a Game:
+
+//...
+executor.execute(player1);
+sleep(1000);
+executor.execute(player2);
+//...
+Dormimos el hilo principal durante un segundo antes de iniciar la ejecución del segundo jugador. Aunque el resultado es difícil de reproducir aquí, porque está relacionado con el timing de la aplicación, ocurre algo así:
+
+Game starting...!
+ping
+// Waiting 1 second
+pong
+Es decir, el jugador “ping” pelotea, ¡pero durante un segundo no tiene a nadie al otro lado! Por lo que el juego queda “suspendido” un segundo, que podrían ser minutos (el tiempo que el hilo principal tarde en lanzar la ejecución del segundo jugador). Esta situación no es ideal, porque estamos arrancando el funcionamiento de un proceso concurrente que requiere la presencia de varios threads antes de que todos estén listos. Para evitar esto necesitamos utilizar una barrera de entrada (entry barrier).
+
+Existen varias clases en la API concurrency que pueden utilizarse con fines de barrera, pero la más sencilla, y la que utilizaremos en ambos (barrera de entrada y salida) es CountdownLatch. El uso de esta clase puede resumirse en tres puntos:
+
+Creamos una barrera con un contador inicializado a N
+Los hilos que dependan de la barrera para continuar invocarán await(), y quedarán bloqueados hasta que el contador llegue a cero. También existe un método await() con timeout
+Los actores que pueden influir en la apertura de la barrera invocarán countDown cuando se cumplan las condiciones adecuadas para liberarla. En general deben cumplirse N condiciones para que la apertura tenga lugar
+Versión 6: Barreras de entrada / salida
+En esta nueva versión deberemos modificar tanto Game como Player. Veamos como quedarían:
 
 public class Player implements Runnable {
 
@@ -1147,6 +1272,10 @@ public class Player implements Runnable {
 
     private final Lock lock;
     private final Condition myTurn;
+
+    private final CountDownLatch entryBarrier;
+    private final CountDownLatch exitBarrier;
+
     private Condition nextTurn;
 
     private Player nextPlayer;
@@ -1154,20 +1283,41 @@ public class Player implements Runnable {
     private volatile boolean play = false;
 
     public Player(String text,
-                  Lock lock) {
+                  Lock lock,
+                  CountDownLatch entryBarrier,
+                  CountDownLatch exitBarrier) {
         this.text = text;
         this.lock = lock;
         this.myTurn = lock.newCondition();
+
+        this.entryBarrier = entryBarrier;
+        this.exitBarrier = exitBarrier;
     }
 
     @Override
     public void run() {
-        while(!Thread.interrupted()) {
+        if(entryBarrierOpen())
+            play();
+    }
+
+    public boolean entryBarrierOpen() {
+        try {
+            entryBarrier.await();
+            return true;
+        } catch (InterruptedException e) {
+            System.out.println("Player "+text+
+                                " was interrupted before starting Game!");
+            return false;
+        }
+    }
+
+    private void play() {
+        while (!Thread.interrupted()) {
             lock.lock();
 
             try {
                 while (!play)
-                    myTurn.await(1, TimeUnit.SECONDS);
+                    myTurn.awaitUninterruptibly();
 
                 System.out.println(text);
 
@@ -1175,12 +1325,12 @@ public class Player implements Runnable {
                 nextPlayer.play = true;
 
                 nextTurn.signal();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
             } finally {
                 lock.unlock();
             }
         }
+
+        exitBarrier.countDown();
     }
 
     public void setNextPlayer(Player nextPlayer) {
@@ -1192,16 +1342,20 @@ public class Player implements Runnable {
         this.play = play;
     }
 }
+La clase no comienza a jugar hasta que la barrera de entrada (entryBarrier) esté abierta, y cuando es interrumpido para terminar invoca a countDown sobre la barrera de salida (exitBarrier), que será la forma de que Game sepa que ambos jugadores han terminado.
 
-la clase Game:
+Pensad por un segundo a qué valores iniciaremos los contadores de entryBarrier y exitBarrier antes de seguir leyendo…
 
 public class Game {
 
     public static void main(String[] args) {
+        CountDownLatch entryBarrier = new CountDownLatch(1);
+        CountDownLatch exitBarrier = new CountDownLatch(2);
+
         Lock lock = new ReentrantLock();
 
-        Player player1 = new Player("ping", lock);
-        Player player2 = new Player("pong", lock);
+        Player player1 = new Player("ping", lock, entryBarrier, exitBarrier);
+        Player player2 = new Player("pong", lock, entryBarrier, exitBarrier);
 
         player1.setNextPlayer(player2);
         player2.setNextPlayer(player1);
@@ -1210,30 +1364,45 @@ public class Game {
 
         player1.setPlay(true);
 
-        Thread thread2 = new Thread(player2);
-        thread2.start();
-        Thread thread1 = new Thread(player1);
-        thread1.start();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
 
-        //Let the players play!
+        executor.execute(player1);
+
+        sleep(1000);
+
+        executor.execute(player2);
+
+        entryBarrier.countDown();
+
+        sleep(2);
+
+        executor.shutdownNow();
+
         try {
-            Thread.sleep(2);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-
-        //Tell the players to stop
-        thread1.interrupt();
-        thread2.interrupt();
-
-        //Wait until players finish
-        try {
-            thread1.join();
-            thread2.join();
+            exitBarrier.await();
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
 
         System.out.println("Game finished!");
     }
+
+    public static void sleep(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
 }
+En efecto, la barrera de entrada tiene un contador de 1, porque se abrirá tan pronto como el hilo principal haya pasado todas las tareas al pool de threads, mientras que la barrera de salida, que aquí se utiliza como alternativa a awaitTermination, tiene un contador de 2, que es el número de actores que debe finalizar su ejecución antes de que el hilo principal pueda proseguir.
+
+De esta forma el timing de la aplicación es el deseado, aunque para ello hayamos tenido que complicar un poco el código. El tema es que la concurrencia de por sí es compleja, por lo que es difícil encapsular perfectamente todos los mecanismos utilizados.
+
+Antes de terminar el post, mencionar que la barrera de salida ha sido añadida a esta versión a efectos didácticos. El mejor mecanismo para esperar la finalización de un grupo de threads en un pool es la espera mediante awaitTermination, introduciendo un timeout razonable, de forma que si alcanzamos el timeout sea porque algún fallo está ocurriendo en las tareas de las que esperamos su terminación. En mi repositorio de GitHub he añadido una versión 7 donde se utiliza la barrera de entrada y awaitTermination como barrera de salida, pudiéndose considerar ésta la versión óptima de la aplicación.
+
+
+
+# 7. Conclusiones
+
+En este post hemos visto cómo podemos implementar mecanismos de concurrencia en Java, y cómo podemos utilizarlos para resolver problemas de sincronización. Hemos visto que la concurrencia es un tema complejo, y que no es fácil encapsularla correctamente, por lo que es importante conocer bien los mecanismos que nos ofrece el lenguaje para implementarla.
