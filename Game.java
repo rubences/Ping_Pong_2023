@@ -23,7 +23,7 @@ public class Game {
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
         executor.execute(player1);
-        
+        sleep(1000);
         executor.execute(player2);
 
         sleep(2);
