@@ -1040,3 +1040,99 @@ public class GameScale {
 
 }
 El código es algo más complejo, pero creo que se entiende bien. Tan sólo cambiando la constante podremos escalar el juego todo lo que queramos, y la concurrencia nos garantizará los turnos perfectamente :)
+
+
+# Gestión de threads / Thread pools
+Además de engorroso, no encapsular la gestión de threads convenientemente nos lleva a código poco cohesionado, ya que estamos ligando la lógica del juego en sí a la gestión de la concurrencia. Como añadido, crear theads es algo costoso a nivel de rendimiento, y en aplicaciones más complejas conlleva una carga importante en el rendimiento final de nuestras aplicaciones.
+
+La API Concurrency de Java exporta una serie de clases e interfaces que nos permiten precisamente encapsular la gestión de hilos con gran flexibilidad, el Executor framework. 
+
+Sus tres elementos principales son:
+
+### Executor: es una interfaz de un sólo método, execute(Runnable). 
+La idea con este framework es que ahora manejamos tareas (tasks) en lugar de hilos, por lo que le estamos pidiendo a la instancia de Executor que por favor ejecute la tarea (instancia de Runnable) cuando le sea posible
+
+### ExecutorService: interfaz que extiende Executor 
+publica una serie de métodos más avanzados, para controlar mejor el ciclo completo del trabajo a realizar (shutdown, awaitTermination), o para ejecutar tareas de tipo Callable, que a grandes rasgos son Runnable que devuelven un valor (más información aquí). En la documentación completa quedan bastante claras las posibilidades de esta interfaz
+
+## Executors: los dos anteriores componentes son interfaces, de las que nosotros podemos crear implementaciones si así lo deseamos. 
+Sin embargo, la mayoría de casos de uso están implementados en el JDK, para utilizar estas implementaciones debemos solicitar una instancia utilizando los métodos factory estáticos que expone esta clase
+
+En general se utiliza el nombre de Thread Pool para refererise las implementaciones de Executor/ExecutorService que utilicemos para gestionar nuestros threads. 
+
+Los tipos más comunes que podemos obtener mediante la factoría Executors son:
+
+1. Single Thread Executor (newSingleThreadExecutor): contiene un solo thread que se encarga de ejecutar tareas. No es muy utilizado
+2. Fixed Thread Pool (newFixedThreadPool): mantiene un número constante de threads “vivos”, esperando recibir tareas para ejecutar
+3. Cached Thread Pool (newCachedThreadPool): mantiene un pool de threads que puede crecer o decrecer según demanda
+4. Scheduled Thread Pool (newScheduledThreadPool): se utiliza para programar la ejecución de tareas. Devuelve una instancia de ScheduledExecutorService, ya que ExecutorService no expone métodos adecuados para programar tareas futuras, tan solo para ejecutarlas tan pronto como sea posible
+
+# Ping Pong, Versión 5: Pool de threads
+Sin necesidad de realizar modificaciones en la clase Player podemos adaptar nuestra clase Game para que utilice un pool de threads en lugar de encargarse ella de la engorrosa tarea de crear, arrancar y parar hilos. Veamos cómo quedaría:
+
+public class Game {
+
+    public static void main(String[] args) {
+        Lock lock = new ReentrantLock();
+
+        Player player1 = new Player("ping", lock);
+        Player player2 = new Player("pong", lock);
+
+        player1.setNextPlayer(player2);
+        player2.setNextPlayer(player1);
+
+        System.out.println("Game starting...!");
+
+        player1.setPlay(true);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        executor.execute(player1);
+        executor.execute(player2);
+
+        sleep(2);
+
+        executor.shutdownNow();
+
+        System.out.println("Game finished!");
+    }
+
+    public static void sleep(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+}
+Utilizamos un pool de dos threads (uno por jugador), y le enviamos las tareas a ejecutar. Nos dormimos 2ms para dejarles pelotear un poco, e invocamos a shutdownNow(), que viene a ser el equivalente a interrumpir los threads según hacíamos en las anteriores versiones, pero encapsulado en el pool. Es necesario invocar shutdownNow en lugar de shutdown, ya que este último deja terminar las tareas en ejecución y devuelve la lista de tareas pendientes. Cómo nuestros jugadores juegan infinitamente hasta que son interrumpidos, si intentamos terminar con shutdown la aplicación no acabaría nunca.
+
+Bien, si probamos varias veces la aplicación, veremos que muchas veces funciona como es debido, mientras que otras la salida se presenta tal que así:
+
+Game starting...!
+ping
+pong
+//...
+Game finished!
+pong
+¿Qué ha ocurrido? Tras solicitar a los threads su interrupción es posible que el hilo principal se adelante a esa finalización, y por eso el texto “Game finished!” aparece antes que la última jugada de “pong”. Explorando la API ExecutorService, vemos que tiene un método llamado awaitTermination. Este método bloquea el thread que lo invoca hasta que todas las tareas del pool han terminado o expira un timeout que le proporcionamos por parámetro:
+
+//...
+ExecutorService executor = Executors.newFixedThreadPool(2);
+
+executor.execute(player1);
+executor.execute(player2);
+
+sleep(2);
+
+executor.shutdownNow();
+
+try {
+    executor.awaitTermination(5, TimeUnit.SECONDS);
+} catch (InterruptedException e) {
+    System.out.println("Main thread interrupted while waiting for players to finish");
+}
+
+System.out.println("Game finished!");
+//...
+Ahora sí conseguimos la salida deseada, y el juego se comporta como queremos con una clase principal mucho más limpia y legible. ¿Hemos terminado? Aún no :)

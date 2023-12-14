@@ -1,3 +1,6 @@
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -17,31 +20,32 @@ public class Game {
 
         player1.setPlay(true);
 
-        Thread thread2 = new Thread(player2);
-        thread2.start();
-        Thread thread1 = new Thread(player1);
-        thread1.start();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
 
-        //Let the players play!
+        executor.execute(player1);
+        executor.execute(player2);
+
+        sleep(2);
+
+        executor.shutdownNow();
+
         try {
-            Thread.sleep(50);
+            executor.awaitTermination(5, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-
-        //Tell the players to stop
-        thread1.interrupt();
-        thread2.interrupt();
-
-        //Wait until players finish
-        try {
-            thread1.join();
-            thread2.join();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+            System.out.println("Main thread interrupted while waiting for players to finish");
         }
 
         System.out.println("Game finished!");
+
+        
+    }
+
+    public static void sleep(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 }
 // Path: Player.java
