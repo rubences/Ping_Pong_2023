@@ -417,4 +417,162 @@ public void run() {
 }
 En general, hemos de ser muy cuidadosos a la hora de manejar InterruptedException. Otra estrategia recomendada, que implicaría modificar la lógica de nuestro método run, es volver a lanzar la excepción para que sea manejada en algún otro lugar. En ningún caso nunca debemos tragarnos la excepción sin más.
 
-Quedan muchas mejoras por llevar a cabo, la aplicación está lejos de ser óptima (empezando por esa horrenda espera activa). En el siguiente post añadiremos mejoras para optimizar el uso de la CPU mediante el uso de locks y condiciones.
+## Espera activa
+Esta instrucción es un ejemplo de “espera activa” o “Busy Waiting”, y no es más que la comprobación infinita de una condición, evitando el progreso de la aplicación hasta que sea cierta. El problema de este enfoque es que nuestro hilo sobrecarga de forma excesiva a la CPU, ya que para el Thread Scheduler no hay nada que le impida progresar, por lo que siempre que existen recursos lo mantiene en su estado “Running” (aquí tenéis un buen diagrama de estados de los threads en Java). El resultado es un uso de recursos excesivo e injustificado.
+
+Os voy a contar una historia curiosa para ilustrar esto que estoy explicando. Cuando desarrollé los ejemplos para la primera parte de este post, dejé mi IDE abierto con la aplicación funcionando (y la espera activa). El resultado es que mi batería, que normalmente dura una 6-8 horas se consumió en menos de dos. Pensemos en las consecuencias de un diseño tan defectuoso en aplicaciones corporativas serias.
+
+## Locking
+La forma más fácil de deshacernos de la espera activa es mediante el uso de Locks. En pocas palabras, locking es un mecanismo que permite establecer políticas de exclusión en aplicaciones concurrentes cuando existen instancias cuyo estado puede ser compartido y modificado por diferentes threads.
+
+Este estado susceptible de ser modificado por más de un thread debe protegrese mediante el uso de una sección crítica (critical section). Java ofrece diferentes mecanismos parar implementar secciones críticas, y en este post veremos los más importantes.
+
+## Versión 3: Intrinsic locking
+El mecanismo más antiguo implementado en Java para la creación de secciones críticas es conocido como Intrinsic Locking, o Monitor Locking. A grandes rasgos, cada objeto creado en Java tiene asociado un lock (intrinsic lock o monitor lock) que puede ser utilizado con fines de exclusión en nuestros threads mediante el uso de la keyword synchronized:
+
+//...
+Object myObject = new Object();
+//...
+synchronized(myObject) {
+    //critical section
+}
+
+En este ejemplo utilizamos una instancia de Object como lock, de forma que cada thread que desee acceder a la sección crítica debe obtener el lock, cosa que intenta hacer en la sentencia synchronized. Si el lock está disponible, el thread se lo queda y no estará disponible para ningún otro thread, que en caso de intentar obtenerlo fracasará y será puesto en estado “Blocked” por el Thread Scheduler.
+
+Internet está plagado de ejemplos sobre el uso de synchronized, por lo que no entraré aquí sobre las mejores o peores prácticas. Solo añadir algunos puntos a considerar:
+
+Es habitual sincronizar en this (synchronized(this)), con lo que la propia instancia se utiliza a sí misma como lock para proteger a sus clientes de problemas de concurrencia. No obstante, hay que ser muy cuidadosos si hacemos esto porque los clientes podrían sincronizar en la misma instancia resultando en un DeadLock
+Personalmente considero mejor práctica utilizar un lock privado (como el utilizado en el fragmento de código tres párrafos arriba), de forma que no exponemos el mecanismo de locking utilizado al exterior encapsulándolo en la propia clase
+synchronized tiene otro fin además de la exclusión, y es la visibilidad. De la misma forma que la keyword volatile nos garantiza la visibilidad inmediata de la variable modificada, synchronized garantiza la visibilidad del estado del objeto utilizado como lock (abarcando más ámbito, pues). Esta visibilidad está garantizada por el Java Memory Model, del que hablaremos algún día.
+Mecanismos de espera
+Tan solo con mecanismos de locking no podemos implementar correctamente la eliminación de la espera activa en nuestra aplicación. Necesitamos algo más, y son los mecanismos de espera.
+
+Cada objeto expone un método, wait(), que al invocarse por un thread hace que el Thread Scheduler lo suspenda, quedando en estado “Waiting”. Es decir:
+
+//thread state is running
+i++
+lock.wait(); // => thread state changes to Waiting
+Este ejemplo está algo cogido con pinzas, porque nunca debe invocarse wait de esta forma. El “idiom” adecuado a la hora de implementar mecanismos de espera es:
+
+synchronized (lock) {
+    try {
+        while (!condition)
+            lock.wait();
+
+        //Excecute code after waiting for condition
+
+    } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+    }
+}
+En el código vemos como:
+
+Es necesario adquirir el lock sobre el objecto en el que queremos invocar wait
+Ese wait implica que esperamos “algo”. Ese algo es una condición (condition predicate) que puede que se cumpla antes de tener que esperar. Por tanto preguntamos por esa condición antes de invocar a wait
+La espera se realiza en un bucle y no en una sentencia if por varios motivos, pero el más importante de ellos es el conocido como “spurious wakeups”. Por su nombre es fácil de deducir en qué consiste, en ocasiones un thread se despierta del estado “Waiting” sin que nadie se lo haya indicado, por lo que puede que la condición no se esté cumpliendo y deba volver a esperar.
+Por último, wait lanza la excepción InterruptedException, que manejamos de la forma comentada en la primera parte de esta serie
+Visto esto, tenemos que un thread pasa a estado “Waiting” a la espera de una condición, pero alguien deberá indicar que uno o varios threads en espera deben despertarse, ¿no? Bien, esto se lleva a cabo mediante los métodos notify y notifyAll, que como es fácil de deducir, indican a uno o a todos los threads esperando sobre un lock que se despierten y comprueben la condición. El idiom es:
+
+synchronized(lock) {
+    //....
+    condition = true;
+    lock.notifyAll(); //or lock.notify();
+}
+De nuevo debemos tener el lock en nuestra posesión para poder invocar los métodos sobre el objeto. Sobre el uso de notify vs notifyAll se ha escrito mucho al respecto, y depende de cada aplicación en concreto. Precisamente el uso de notifyAll es otro de los motivos por los que la espera de la condición se hace en un bucle y no en una condición, en ocasiones solo un thread de todos los que estén en espera puede progresar tras cumplirse el predicado.
+
+Por fin ha llegado el momento de ver cómo quedaría nuestro juego de Ping Pong tras aplicar los conceptos que acabamos de ver:
+
+public class Player implements Runnable {
+
+    private final String text;
+
+    private final Object lock;
+
+    private Player nextPlayer;
+
+    private volatile boolean play = false;
+
+    public Player(String text,
+                  Object lock) {
+        this.text = text;
+        this.lock = lock;
+    }
+
+    @Override
+    public void run() {
+        while(!Thread.interrupted()) {
+            synchronized (lock) {
+                try {
+                    while (!play)
+                        lock.wait();
+
+                    System.out.println(text);
+
+                    this.play = false;
+                    nextPlayer.play = true;
+
+                    lock.notifyAll();
+
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+    }
+
+    public void setNextPlayer(Player nextPlayer) {
+        this.nextPlayer = nextPlayer;
+    }
+
+    public void setPlay(boolean play) {
+        this.play = play;
+    }
+}
+El lock en esta aplicación vendría a ser la pelota en juego, que en cada jugada solo puede estar en posesión de un jugador. También vemos que tras imprimir el texto por salida estándar notifica al otro jugador que puede continuar. He utilizado notifyAll, aunque podría ser notify sin problemas.
+
+La clase que conduce el juego no varía mucho sobre la última versión de la primera parte de esta serie:
+
+public class Game {
+
+    public static void main(String[] args) {
+
+        Object lock = new Object();
+
+        Player player1 = new Player("ping", lock);
+        Player player2 = new Player("pong", lock);
+
+        player1.setNextPlayer(player2);
+        player2.setNextPlayer(player1);
+
+        System.out.println("Game starting...!");
+
+        player1.setPlay(true);
+
+        Thread thread2 = new Thread(player2);
+        thread2.start();
+        Thread thread1 = new Thread(player1);
+        thread1.start();
+
+        //Let the players play!
+        try {
+            Thread.sleep(2);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        //Tell the players to stop
+        thread1.interrupt();
+        thread2.interrupt();
+
+        //Wait until players finish
+        try {
+            thread1.join();
+            thread2.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("Game finished!");
+    }
+
+}
