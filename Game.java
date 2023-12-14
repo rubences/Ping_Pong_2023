@@ -10,7 +10,7 @@ public class Game {
 
     public static void main(String[] args) {
         CountDownLatch entryBarrier = new CountDownLatch(1);
-        CountDownLatch exitBarrier = new CountDownLatch(2);
+        CountDownLatch exitBarrier = new CountDownLatch(1);
 
         Lock lock = new ReentrantLock();
 
@@ -34,12 +34,12 @@ public class Game {
 
         entryBarrier.countDown();
 
-        sleep(2);
+        executor.shutdown();
 
-        executor.shutdownNow();
 
         try {
-            exitBarrier.await();
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+            exitBarrier.countDown();
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -55,4 +55,5 @@ public class Game {
         }
     }
 }
+
 // Path: Player.java

@@ -1402,10 +1402,60 @@ De esta forma el timing de la aplicación es el deseado, aunque para ello hayamo
 Antes de terminar el post, mencionar que la barrera de salida ha sido añadida a esta versión a efectos didácticos. El mejor mecanismo para esperar la finalización de un grupo de threads en un pool es la espera mediante awaitTermination, introduciendo un timeout razonable, de forma que si alcanzamos el timeout sea porque algún fallo está ocurriendo en las tareas de las que esperamos su terminación. 
 
 
-versión 7 donde se utiliza la barrera de entrada y awaitTermination como barrera de salida, pudiéndose considerar ésta la versión óptima de la aplicación.
+# 7. Barreras mejoradas: barrera de entrada y awaitTermination como barrera de salida
+se utiliza la barrera de entrada y awaitTermination como barrera de salida, pudiéndose considerar ésta la versión óptima de la aplicación.
+
+public class Game {
+
+    public static void main(String[] args) {
+        CountDownLatch entryBarrier = new CountDownLatch(1);
+
+        Lock lock = new ReentrantLock();
+
+        Player player1 = new Player("ping", lock, entryBarrier);
+        Player player2 = new Player("pong", lock, entryBarrier);
+
+        player1.setNextPlayer(player2);
+        player2.setNextPlayer(player1);
+
+        System.out.println("Game starting...!");
+
+        player1.setPlay(true);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        executor.execute(player1);
+
+        sleep(1000);
+
+        executor.execute(player2);
+
+        entryBarrier.countDown();
+
+        executor.shutdown();
+
+        try {
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("Game finished!");
+    }
+
+    public static void sleep(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+}
 
 
 
-# 7. Conclusiones
+
+
+# 8. Conclusiones
 
 En este post hemos visto cómo podemos implementar mecanismos de concurrencia en Java, y cómo podemos utilizarlos para resolver problemas de sincronización. Hemos visto que la concurrencia es un tema complejo, y que no es fácil encapsularla correctamente, por lo que es importante conocer bien los mecanismos que nos ofrece el lenguaje para implementarla.

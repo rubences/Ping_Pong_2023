@@ -26,7 +26,6 @@ public class Player implements Runnable {
         this.text = text;
         this.lock = lock;
         this.myTurn = lock.newCondition();
-
         this.entryBarrier = entryBarrier;
         this.exitBarrier = exitBarrier;
     }
@@ -35,6 +34,7 @@ public class Player implements Runnable {
     public void run() {
         if(entryBarrierOpen())
             play();
+        
     }
 
     public boolean entryBarrierOpen() {
@@ -45,6 +45,15 @@ public class Player implements Runnable {
             System.out.println("Player "+text+
                                 " was interrupted before starting Game!");
             return false;
+        }
+    }
+
+    public void exitBarrierAwait() {
+        try {
+            exitBarrier.await();
+        } catch (InterruptedException e) {
+            System.out.println("Player "+text+
+                                " was interrupted before finishing Game!");
         }
     }
 
