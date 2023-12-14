@@ -24,7 +24,7 @@ public class Game {
 
         //Let the players play!
         try {
-            Thread.sleep(2);
+            Thread.sleep(50);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }

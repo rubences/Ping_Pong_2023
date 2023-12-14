@@ -52,4 +52,27 @@ public class Player implements Runnable {
     public void setPlay(boolean play) {
         this.play = play;
     }
+
+    public void myTurn() {
+        lock.lock();
+        try {
+            while (!play)
+                myTurn.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            lock.unlock();
+        }
+    }
+    public void nextTurn() {
+        lock.lock();
+        try {
+            while (play)
+                nextTurn.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            lock.unlock();
+        }
+    }
 }
